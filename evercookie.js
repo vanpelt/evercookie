@@ -1,6 +1,5 @@
 /*jslint browser: true, nomen: false, plusplus: false, bitwise: false, maxerr: 50, indent: 2 */
 /**
- * @depends jquery-1.4.2.min.js
  * @depends swfobject-2.2.min.js
  *
  * evercookie 0.4 (10/13/2010) -- extremely persistent cookies
@@ -14,7 +13,6 @@
  *  - standard http cookies
  *  - flash cookies (local shared objects)
  *  - silverlight isolated storage
- *  - png generation w/forced cache and html5 canvas pixel reading
  *  - http etags
  *  - http cache
  *  - window.name
@@ -99,7 +97,7 @@ function _evercookie_flash_var(cookie) {
   _global_lso = cookie;
 
   // remove the flash object now
-  var swf = $("#myswf"); //document.getElementById("myswf");
+  var swf = document.getElementById("myswf");
   if (swf && swf.parentNode) {
     swf.parentNode.removeChild(swf);
   }
@@ -123,7 +121,6 @@ var evercookie = (function (window) {
     Image = window.Image,
     localStorage = window.localStorage,
     globalStorage = window.globalStorage,
-    $ = window.jQuery,
     swfobject = window.swfobject;
   try {
     var sessionStorage = window.sessionStorage;
@@ -137,15 +134,11 @@ var evercookie = (function (window) {
     this._ec = {};
 
     this.get = function (name, cb, dont_reset) {
-      $(function () {
-        self._evercookie(name, cb, undefined, undefined, dont_reset);
-      });
+      self._evercookie(name, cb, undefined, undefined, dont_reset);
     };
 
     this.set = function (name, value) {
-      $(function () {
-        self._evercookie(name, function () {}, value);
-      });
+      self._evercookie(name, function () {}, value);
     };
 
     this._evercookie = function (name, cb, value, i, dont_reset) {
@@ -158,7 +151,6 @@ var evercookie = (function (window) {
       // first run
       if (i === 0) {
         self.evercookie_database_storage(name, value);
-        self.evercookie_png(name, value);
         self.evercookie_etag(name, value);
         self.evercookie_cache(name, value);
         self.evercookie_lso(name, value);
@@ -187,7 +179,7 @@ var evercookie = (function (window) {
         }
       }
 
-      // when reading data, we need to wait for swf, db, silverlight and png
+      // when reading data, we need to wait for swf, db, silverlight
       else
       {
         if (
@@ -197,7 +189,6 @@ var evercookie = (function (window) {
             (typeof _global_lso === "undefined") ||
             (typeof self._ec.etagData === "undefined") ||
             (typeof self._ec.cacheData === "undefined") ||
-            (document.createElement("canvas").getContext && (typeof self._ec.pngData === "undefined" || self._ec.pngData === "")) ||
             (typeof _global_isolated === "undefined")
           ) &&
           i++ < _ec_tests
@@ -282,6 +273,40 @@ var evercookie = (function (window) {
       img.style.position = "absolute";
       img.src = src;
     }
+    
+    /* Borrowed from: http://code.google.com/p/microajax/ */
+    this.ajax = function(settings)
+    {
+    	this.bindFunction = function (caller, object) {
+    		return function() {
+    			return caller.apply(object, [object]);
+    		};
+    	};
+
+    	this.stateChange = function (object) {
+    		if (this.request.readyState==4)
+    			this.callbackFunction(this.request.responseText);
+    	};
+
+    	this.getRequest = function() {
+    		if (window.ActiveXObject)
+    			return new ActiveXObject('Microsoft.XMLHTTP');
+    		else if (window.XMLHttpRequest)
+    			return new XMLHttpRequest();
+    		return false;
+    	};
+
+    	this.callbackFunction=settings.success;
+    	this.url=settings.url;
+    	this.request = this.getRequest();
+	
+    	if(this.request) {
+    		var req = this.request;
+    		req.onreadystatechange = this.bindFunction(this.stateChange, this);
+    		req.open("GET", url, true);
+    		req.send(this.postBody);
+    	}
+    }
 
     this.evercookie_cache = function (name, value) {
       if (value !== undefined) {
@@ -296,7 +321,7 @@ var evercookie = (function (window) {
         self._ec.cacheData = undefined;
         document.cookie = "evercookie_cache=; expires=Mon, 20 Sep 2010 00:00:00 UTC; path=/";
 
-        $.ajax({
+        self.ajax({
           url: _ec_baseurl + "evercookie_cache.php?name=" + name,
           success: function (data) {
             // put our cookie back
@@ -321,7 +346,7 @@ var evercookie = (function (window) {
         self._ec.etagData = undefined;
         document.cookie = "evercookie_etag=; expires=Mon, 20 Sep 2010 00:00:00 UTC; path=/";
 
-        $.ajax({
+        self.ajax({
           url: _ec_baseurl + "evercookie_etag.php?name=" + name,
           success: function (data) {
             // put our cookie back
@@ -334,7 +359,7 @@ var evercookie = (function (window) {
     };
 
     this.evercookie_lso = function (name, value) {
-      var div = $("#swfcontainer"),
+      var div = document.getElementById("swfcontainer"),
         flashvars = {},
         params = {},
         attributes = {};
@@ -351,63 +376,6 @@ var evercookie = (function (window) {
       attributes.id        = "myswf";
       attributes.name      = "myswf";
       swfobject.embedSWF(_ec_baseurl + "evercookie.swf", "swfcontainer", "1", "1", "9.0.0", false, flashvars, params, attributes);
-    };
-
-    this.evercookie_png = function (name, value) {
-      var canvas = document.createElement("canvas"),
-       img, ctx, origvalue;
-      canvas.style.visibility = "hidden";
-      canvas.style.position = "absolute";
-      canvas.width = 200;
-      canvas.height = 1;
-      if (canvas && canvas.getContext) {
-        // evercookie_png.php handles the hard part of generating the image
-        // based off of the http cookie and returning it cached
-        img = new Image();
-        img.style.visibility = "hidden";
-        img.style.position = "absolute";
-        if (value !== undefined) {
-          // make sure we have evercookie session defined first
-          document.cookie = "evercookie_png=" + value;
-        } else {
-          self._ec.pngData = undefined;
-          ctx = canvas.getContext("2d");
-
-          // interestingly enough, we want to erase our evercookie
-          // http cookie so the php will force a cached response
-          origvalue = this.getFromStr("evercookie_png", document.cookie);
-          document.cookie = "evercookie_png=; expires=Mon, 20 Sep 2010 00:00:00 UTC; path=/";
-
-          img.onload = function () {
-            // put our cookie back
-            document.cookie = "evercookie_png=" + origvalue + "; expires=Tue, 31 Dec 2030 00:00:00 UTC; path=/";
-
-            self._ec.pngData = "";
-            ctx.drawImage(img, 0, 0);
-
-            // get CanvasPixelArray from  given coordinates and dimensions
-            var imgd = ctx.getImageData(0, 0, 200, 1),
-              pix = imgd.data, i, n;
-
-            // loop over each pixel to get the "RGB" values (ignore alpha)
-            for (i = 0, n = pix.length; i < n; i += 4) {
-              if (pix[i] === 0) {
-                break;
-              }
-              self._ec.pngData += String.fromCharCode(pix[i]);
-              if (pix[i + 1] === 0) {
-                break;
-              }
-              self._ec.pngData += String.fromCharCode(pix[i + 1]);
-              if (pix[i + 2] === 0) {
-                break;
-              }
-              self._ec.pngData += String.fromCharCode(pix[i + 2]);
-            }
-          };
-        }
-        img.src = _ec_baseurl + "evercookie_png.php?name=" + name;
-      }
     };
 
     this.evercookie_local_storage = function (name, value) {
@@ -751,7 +719,7 @@ var evercookie = (function (window) {
     };
 
     this.getHost = function () {
-      return window.location.host.replace("www.", "");
+      return window.location.host.replace(/:\d+/, '');
     };
 
     this.toHex = function (str) {
